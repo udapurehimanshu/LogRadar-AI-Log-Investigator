@@ -1494,3 +1494,233 @@ body.privacy-active .ts-col {
 .topbar {
   justify-content: space-between;
 }
+
+/* ─── API Services Tracker ─────────────────────────── */
+.api-tracker-layout {
+  display: flex;
+  gap: 20px;
+  height: calc(100vh - 150px);
+  min-height: 0;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.api-list-panel {
+  flex: 0 0 380px;
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+
+.api-list-header {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  background: #F9FAFB;
+}
+
+.api-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.api-card {
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: #fff;
+  border: 1px solid var(--card-border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.api-card:hover {
+  border-color: var(--primary-border);
+  background: var(--primary-light);
+  transform: translateY(-1px);
+}
+
+.api-card.selected {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  box-shadow: 0 2px 4px rgba(59,130,246,0.1);
+}
+
+.api-card-title {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text-dark);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.api-card-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.api-card-meta {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 12px;
+  font-family: 'Fira Code', monospace;
+}
+
+.api-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.api-badge.success {
+  background: var(--success-bg);
+  color: var(--success-text);
+  border: 1px solid var(--success-border);
+}
+
+.api-badge.error {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border: 1px solid var(--error-border);
+}
+
+.api-badge.warn {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border: 1px solid var(--warning-border);
+}
+
+.api-details-panel {
+  flex: 1;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.api-details-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: #F9FAFB;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.api-details-header-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-dark);
+  font-family: 'Fira Code', monospace;
+}
+
+.api-details-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.api-details-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-light);
+  text-align: center;
+  gap: 12px;
+}
+
+.api-details-empty svg {
+  color: var(--text-light);
+}
+
+.api-details-row {
+  display: flex;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.api-details-row:last-child {
+  border-bottom: none;
+}
+
+.api-details-label {
+  width: 140px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.api-details-value {
+  flex: 1;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--text-dark);
+}
+
+.api-payload-box {
+  margin-top: 18px;
+}
+
+.api-payload-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  letter-spacing: 0.6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.api-payload-body {
+  background: #1F2937;
+  color: #F3F4F6;
+  padding: 14px 16px;
+  border-radius: 8px;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 280px;
+  border: 1px solid #374151;
+}
+
+/* Make stat cards visually look clickable with pointer cursor */
+.stat-card {
+  cursor: pointer;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--card-shadow-md);
+}
+.stat-card-value {
+  transition: color 0.15s;
+}
+.stat-card:hover .stat-card-value {
+  color: var(--primary);
+}

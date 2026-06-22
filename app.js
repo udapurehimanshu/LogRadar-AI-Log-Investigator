@@ -381,8 +381,16 @@ function extractAPIs(text) {
       let reqM = msg.match(/Request Payload\s*:\s*(.+)$/i);
       if (reqM) ctx.currentApi.request = reqM[1];
 
-      let respM = msg.match(/Response Body\s*:\s*(.+)$/i) || msg.match(/result\s*(\{.+)/i);
-      if (respM) ctx.currentApi.response = respM[1];
+      let respM = msg.match(/Response Body\s*:\s*(.+)$/i);
+      if (respM) {
+        ctx.currentApi.response = respM[1];
+      } else {
+        let resultIdx = msg.indexOf('result{');
+        if (resultIdx === -1) resultIdx = msg.indexOf('result {');
+        if (resultIdx !== -1) {
+          ctx.currentApi.response = msg.substring(msg.indexOf('{', resultIdx));
+        }
+      }
 
       // If we see completion of the web service call, push it
       if (msg.includes('finish ') || msg.includes('Response Code =') || msg.includes('HTTP Response Code')) {
@@ -411,6 +419,19 @@ function extractAPIs(text) {
       if (api.ms) existing.ms = api.ms;
       if (api.request) existing.request = api.request;
       if (api.response) existing.response = api.response;
+    }
+  });
+
+  // Post-processing to fill default properties
+  uniqueApis.forEach(api => {
+    if (!api.status) {
+      api.status = 200; // default to 200 if it ran successfully and parsed
+    }
+    if (!api.endpoint && api.response) {
+      const hrefM = api.response.match(/"href"\s*:\s*"([^"]+)"/i);
+      if (hrefM) {
+        api.endpoint = hrefM[1];
+      }
     }
   });
 
@@ -1035,6 +1056,207 @@ function extractScriptName(msg) {
   return m ? m[1] : null;
 }
 
+function renderApiTracker(apis) {
+  const container = document.getElementById('api-list-container');
+  if (!apis || !apis.length) {
+    container.innerHTML = '<div class="no-data-state"><p>No API calls detected in log</p></div>';
+    document.getElementById('api-details-panel').innerHTML = `
+      <div class="api-details-empty">
+        <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+        </svg>
+        <h3>No API Selected</h3>
+        <p>Select an API call from the list to view its details, request headers, and response payload.</p>
+      </div>`;
+    return;
+  }
+
+  const renderList = (filteredApis) => {
+    if (!filteredApis.length) {
+      container.innerHTML = '<div class="no-data-state"><p>No matching API calls found</p></div>';
+      return;
+    }
+
+    container.innerHTML = filteredApis.map((api) => {
+      // Find original index in STATE.analysis.apis
+      const origIdx = STATE.analysis.apis.indexOf(api);
+      const isError = api.status >= 400;
+      const badgeClass = isError ? 'error' : api.ms > 2000 ? 'warn' : 'success';
+      const badgeText = api.status || 'OK';
+      
+      return `
+        <div class="api-card" data-idx="${origIdx}">
+          <div class="api-card-title">
+            <span class="api-card-title-text" title="${escHtml(api.name)}">${escHtml(api.name)}</span>
+            <span class="api-badge ${badgeClass}">${badgeText}</span>
+          </div>
+          <div class="api-card-meta">
+            <span>${api.method || 'GET'}</span>
+            <span>${api.ms}ms</span>
+          </div>
+        </div>`;
+    }).join('');
+
+    // Attach click listeners to cards
+    container.querySelectorAll('.api-card').forEach(card => {
+      card.addEventListener('click', () => {
+        // Remove selection from all
+        container.querySelectorAll('.api-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+
+        const idx = parseInt(card.dataset.idx);
+        renderApiDetails(STATE.analysis.apis[idx]);
+      });
+    });
+  };
+
+  // Initial render of all APIs
+  renderList(apis);
+
+  // Set up search filter for API Tracker
+  const searchInput = document.getElementById('api-search-input');
+  searchInput.value = ''; // clear previous value
+  
+  // Remove existing listeners by cloning (to prevent duplicate registrations)
+  const newSearchInput = searchInput.cloneNode(true);
+  searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+  
+  newSearchInput.addEventListener('input', () => {
+    const query = newSearchInput.value.toLowerCase().trim();
+    if (!query) {
+      renderList(apis);
+      return;
+    }
+    const filtered = apis.filter(api => 
+      (api.name || '').toLowerCase().includes(query) || 
+      (api.endpoint || '').toLowerCase().includes(query) || 
+      String(api.status || '').includes(query) ||
+      (api.method || '').toLowerCase().includes(query)
+    );
+    renderList(filtered);
+  });
+}
+
+function renderApiDetails(api) {
+  const panel = document.getElementById('api-details-panel');
+  if (!api) {
+    panel.innerHTML = `
+      <div class="api-details-empty">
+        <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+        </svg>
+        <h3>No API Selected</h3>
+        <p>Select an API call from the list to view its details, request headers, and response payload.</p>
+      </div>`;
+    return;
+  }
+
+  const isError = api.status >= 400;
+  const badgeClass = isError ? 'error' : api.ms > 2000 ? 'warn' : 'success';
+  const httpInfo = HTTP_KB[api.status] || { label: 'Unknown', explain: 'No standard documentation for this status code.' };
+
+  // Formatting request and response payload
+  let reqPayloadHtml = 'N/A';
+  if (api.request) {
+    let reqText = api.request;
+    try {
+      if (reqText.trim().startsWith('{') || reqText.trim().startsWith('[')) {
+        reqText = JSON.stringify(JSON.parse(reqText), null, 2);
+      }
+    } catch(e) {}
+    reqPayloadHtml = `<pre class="api-payload-body">${redactHTML(escHtml(reqText))}</pre>`;
+  }
+
+  let respPayloadHtml = 'N/A';
+  if (api.response) {
+    let respText = api.response;
+    try {
+      if (respText.trim().startsWith('{') || respText.trim().startsWith('[')) {
+        respText = JSON.stringify(JSON.parse(respText), null, 2);
+      }
+    } catch(e) {}
+    respPayloadHtml = `<pre class="api-payload-body">${redactHTML(escHtml(respText))}</pre>`;
+  }
+
+  panel.innerHTML = `
+    <div class="api-details-header">
+      <span class="api-details-header-title">${escHtml(api.name)}</span>
+      <span class="api-badge ${badgeClass}" style="font-size:12px; padding:3px 10px;">HTTP ${api.status} - ${httpInfo.label}</span>
+    </div>
+    <div class="api-details-content">
+      <div class="api-details-row">
+        <div class="api-details-label">API Name</div>
+        <div class="api-details-value">${escHtml(api.name)}</div>
+      </div>
+      <div class="api-details-row">
+        <div class="api-details-label">Request URL</div>
+        <div class="api-details-value">${redactHTML(escHtml(api.endpoint || 'N/A'))}</div>
+      </div>
+      <div class="api-details-row">
+        <div class="api-details-label">HTTP Method</div>
+        <div class="api-details-value" style="font-weight:700; color:var(--primary);">${escHtml(api.method || 'GET')}</div>
+      </div>
+      <div class="api-details-row">
+        <div class="api-details-label">Response Time</div>
+        <div class="api-details-value" style="font-weight:700; color:${api.ms > 2000 ? 'var(--warning-text)' : 'var(--success-text)'}">${api.ms} ms</div>
+      </div>
+      <div class="api-details-row">
+        <div class="api-details-label">Timestamp</div>
+        <div class="api-details-value">${escHtml(api.timestamp || 'N/A')}</div>
+      </div>
+      <div class="api-details-row">
+        <div class="api-details-label">Thread Context</div>
+        <div class="api-details-value">${redactHTML(escHtml(api.thread || 'N/A'))}</div>
+      </div>
+      
+      <div style="margin-top: 14px; padding: 10px 14px; background:var(--bg); border-radius:8px; border:1px solid var(--border); font-size:12.5px; color:var(--text-normal); line-height:1.5;">
+        <strong>Status Analysis:</strong> ${httpInfo.explain}
+      </div>
+
+      <div class="api-payload-box">
+        <div class="api-payload-title">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+          Request Payload
+        </div>
+        ${reqPayloadHtml}
+      </div>
+
+      <div class="api-payload-box">
+        <div class="api-payload-title">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+          Response Payload
+        </div>
+        ${respPayloadHtml}
+      </div>
+    </div>`;
+}
+
+function selectApiByName(name) {
+  switchView('api');
+  if (!STATE.analysis || !STATE.analysis.apis) return;
+  const apiIndex = STATE.analysis.apis.findIndex(a => a.name === name);
+  if (apiIndex !== -1) {
+    const api = STATE.analysis.apis[apiIndex];
+    renderApiDetails(api);
+    setTimeout(() => {
+      const container = document.getElementById('api-list-container');
+      if (container) {
+        container.querySelectorAll('.api-card').forEach(c => c.classList.remove('selected'));
+        const targetCard = container.querySelector(`.api-card[data-idx="${apiIndex}"]`);
+        if (targetCard) {
+          targetCard.classList.add('selected');
+          targetCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
+    }, 50);
+  }
+}
+
 // ─── UI Rendering ─────────────────────────────────────────────────────────────
 
 function renderDashboard(a) {
@@ -1096,8 +1318,7 @@ function renderDashboard(a) {
     perfEl.querySelectorAll('.clickable-api-card').forEach(cardEl => {
       cardEl.addEventListener('click', () => {
         const name = cardEl.dataset.name;
-        const match = STATE.parsed.find(r => r.message.includes(name));
-        if (match) showAndHighlightLog(match.id);
+        selectApiByName(name);
       });
     });
   } else {
@@ -1731,6 +1952,7 @@ function loadLog(text, filename) {
   applyFilters();
   renderTimeline(parsed);
   renderWMSFlow(STATE.analysis.flow, STATE.analysis);
+  renderApiTracker(STATE.analysis.apis);
 
   document.getElementById('diag-drawer').classList.remove('open');
   switchView('dashboard');
@@ -1742,8 +1964,80 @@ function loadSample(key) {
   loadLog(s.content, s.name + '.log');
 }
 
+function initDashboardClicks() {
+  const setLogLevelCheckboxes = (levelsToEnable) => {
+    document.querySelectorAll('.level-checkbox').forEach(cb => {
+      const lv = cb.dataset.level;
+      const shouldCheck = levelsToEnable.includes(lv);
+      cb.checked = shouldCheck;
+      if (shouldCheck) STATE.activeLevels.add(lv);
+      else STATE.activeLevels.delete(lv);
+      cb.closest('.level-pill').classList.toggle('inactive', !shouldCheck);
+    });
+  };
+
+  const cardCrit = document.getElementById('card-critical');
+  if (cardCrit) {
+    cardCrit.addEventListener('click', () => {
+      switchView('analyzer');
+      setLogLevelCheckboxes(['FATAL', 'ERROR']);
+      document.getElementById('search-input').value = '';
+      applyFilters();
+    });
+  }
+
+  const cardWarn = document.getElementById('card-warnings');
+  if (cardWarn) {
+    cardWarn.addEventListener('click', () => {
+      switchView('analyzer');
+      setLogLevelCheckboxes(['WARN']);
+      document.getElementById('search-input').value = '';
+      applyFilters();
+    });
+  }
+
+  const cardSlow = document.getElementById('card-slowapis');
+  if (cardSlow) {
+    cardSlow.addEventListener('click', () => {
+      switchView('api');
+    });
+  }
+
+  const cardSql = document.getElementById('card-sqlfail');
+  if (cardSql) {
+    cardSql.addEventListener('click', () => {
+      switchView('analyzer');
+      setLogLevelCheckboxes(['FATAL', 'ERROR']);
+      document.getElementById('search-input').value = 'SQL';
+      applyFilters();
+    });
+  }
+
+  const cardUsers = document.getElementById('card-users');
+  if (cardUsers) {
+    cardUsers.addEventListener('click', () => {
+      switchView('analyzer');
+      setLogLevelCheckboxes(['FATAL', 'ERROR', 'WARN', 'INFO', 'DEBUG']);
+      document.getElementById('search-input').value = 'User:';
+      applyFilters();
+    });
+  }
+
+  const cardTotal = document.getElementById('card-total');
+  if (cardTotal) {
+    cardTotal.addEventListener('click', () => {
+      switchView('analyzer');
+      setLogLevelCheckboxes(['FATAL', 'ERROR', 'WARN', 'INFO', 'DEBUG']);
+      document.getElementById('search-input').value = '';
+      applyFilters();
+    });
+  }
+}
+
 // ─── Event Listeners ──────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+
+  initDashboardClicks();
 
   // Nav buttons
   document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
@@ -1828,5 +2122,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Re-render the open drawer with updated PII masking
     if (STATE.selectedRow) openDrawer(STATE.selectedRow);
   });
+
+  // Initialize empty state for API Tracker
+  renderApiTracker(null);
 
 });
